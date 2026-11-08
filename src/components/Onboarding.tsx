@@ -19,7 +19,7 @@ export function Onboarding({ onStart }: { onStart: () => void }) {
           <p className="onboarding__note">
             <LockIcon size={17} />
             <span>
-              不登录、不联网。任务只保存在这台设备上，换机或卸载后无法恢复。
+              不登录、不上传。任务只保存在这台设备上，换机或卸载后无法恢复。
             </span>
           </p>
         </div>
