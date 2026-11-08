@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AppSettings, NotificationState, Task, TaskDraft, ToastState, View } from './types';
 import {
+  dueMoment,
   isOverdue,
   reminderMoment,
   sortAll,
@@ -14,9 +15,11 @@ import {
   hasOnboarded,
   insertTask,
   loadPermissionBannerDismissed,
+  loadReminderLog,
   loadSettings,
   loadTasks,
   markOnboarded,
+  markReminderFired,
   patchTask,
   removeTask,
   restoreTask,
@@ -38,7 +41,10 @@ import { PermissionBanner } from './components/PermissionBanner';
 import { PlusIcon } from './components/Icon';
 
 const COMPLETE_ANIMATION_MS = 900;
-const REMINDER_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/** setTimeout's maximum supported delay; longer reminders are rescheduled. */
+const MAX_TIMER_DELAY_MS = 2_147_000_000;
+/** Reminders missed while the app was closed are shown if they are this recent. */
+const CATCH_UP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function readNotificationState(): NotificationState {
   if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
@@ -58,6 +64,7 @@ export default function App() {
   const [completing, setCompleting] = useState<Record<string, boolean>>({});
   const [reminderAlert, setReminderAlert] = useState<Task | null>(null);
   const [notification, setNotification] = useState<NotificationState>(readNotificationState);
+  const [reminderTick, setReminderTick] = useState(0);
   const [permissionBannerDismissed, setPermissionBannerDismissed] = useState(
     loadPermissionBannerDismissed,
   );
@@ -97,6 +104,7 @@ export default function App() {
     function refresh() {
       setNow(new Date());
       setNotification(readNotificationState());
+      setReminderTick((tick) => tick + 1);
     }
     window.addEventListener('focus', refresh);
     window.addEventListener('visibilitychange', refresh);
@@ -153,6 +161,7 @@ export default function App() {
   }
 
   function handleToggle(task: Task) {
+    if (reminderAlert?.id === task.id) setReminderAlert(null);
     if (task.completedAt) {
       setTasks((current) => setCompletedAt(current, task.id, null));
       showToast('已恢复为待办');
@@ -179,6 +188,7 @@ export default function App() {
   }
 
   function handleDelete(task: Task) {
+    if (reminderAlert?.id === task.id) setReminderAlert(null);
     const timer = completionTimers.current[task.id];
     if (timer) {
       window.clearTimeout(timer);
@@ -244,6 +254,8 @@ export default function App() {
 
   fireReminderRef.current = (task: Task) => {
     if (completing[task.id]) return;
+    const moment = reminderMoment(task);
+    if (moment) markReminderFired(task.id, moment.toISOString());
     setReminderAlert(task);
     setNow(new Date());
     if (notification === 'granted' && 'Notification' in window && Notification.permission === 'granted') {
@@ -268,22 +280,62 @@ export default function App() {
 
   useEffect(() => {
     if (!settings.remindersEnabled) return;
-    const timers: number[] = [];
-    const nowMs = Date.now();
-    for (const task of tasks) {
-      if (task.completedAt || task.reminder === 'none' || !task.dueDate) continue;
-      const at = reminderMoment(task);
-      if (!at) continue;
-      const delay = at.getTime() - nowMs;
-      if (delay <= 0 || delay > REMINDER_WINDOW_MS) continue;
-      timers.push(
-        window.setTimeout(() => {
-          fireReminderRef.current(task);
-        }, delay),
-      );
-    }
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [tasks, settings.remindersEnabled]);
+    let disposed = false;
+    let timers: number[] = [];
+
+    const schedule = () => {
+      if (disposed) return;
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers = [];
+
+      const fired = loadReminderLog();
+      const nowMs = Date.now();
+      let nextRescan: number | null = null;
+      let missed: { task: Task; at: number } | null = null;
+
+      for (const task of tasks) {
+        if (task.completedAt || task.reminder === 'none' || !task.dueDate) continue;
+        const at = reminderMoment(task);
+        if (!at) continue;
+        const moment = at.toISOString();
+        if (fired[task.id] === moment) continue;
+
+        const delay = at.getTime() - nowMs;
+        if (delay <= 0) {
+          const due = dueMoment(task);
+          if (due && due.getTime() > nowMs && at.getTime() >= nowMs - CATCH_UP_WINDOW_MS) {
+            if (!missed || at.getTime() > missed.at) missed = { task, at: at.getTime() };
+          }
+          continue;
+        }
+
+        if (delay > MAX_TIMER_DELAY_MS) {
+          nextRescan = MAX_TIMER_DELAY_MS;
+          continue;
+        }
+
+        timers.push(
+          window.setTimeout(() => {
+            fireReminderRef.current(task);
+          }, delay),
+        );
+      }
+
+      if (nextRescan !== null) {
+        timers.push(window.setTimeout(schedule, nextRescan));
+      }
+      if (missed) {
+        const caughtUp = missed;
+        timers.push(window.setTimeout(() => fireReminderRef.current(caughtUp.task), 0));
+      }
+    };
+
+    schedule();
+    return () => {
+      disposed = true;
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [tasks, settings.remindersEnabled, reminderTick]);
 
   function dismissPermissionBanner() {
     setPermissionBannerDismissed(true);

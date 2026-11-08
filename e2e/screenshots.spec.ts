@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { localDay, makeTask, openApp } from './helpers';
+import { makeTask, openApp } from './helpers';
 
 /**
  * Product screenshots for the PR. Run explicitly:
@@ -9,13 +9,15 @@ test.describe('product screenshots', () => {
   test.skip(process.env.CAPTURE_SCREENSHOTS !== '1', 'set CAPTURE_SCREENSHOTS=1 to capture');
 
   test('captures the reviewed screens', async ({ page }) => {
-    const now = new Date();
+    await page.clock.install({ time: new Date(2026, 10, 8, 8, 0, 0) });
+    await page.clock.resume();
+    const now = new Date(2026, 10, 8, 8, 0, 0);
     const iso = (minutesAgo: number) => new Date(now.getTime() - minutesAgo * 60_000).toISOString();
     const tasks = [
       makeTask({
         id: 's1',
         title: '提交本周工作周报',
-        dueDate: localDay(0),
+        dueDate: '2026-11-08',
         dueTime: '18:00',
         reminder: '10m',
         createdAt: iso(180),
@@ -23,14 +25,14 @@ test.describe('product screenshots', () => {
       makeTask({
         id: 's2',
         title: '给物业打电话确认门禁卡',
-        dueDate: localDay(-1),
+        dueDate: '2026-11-07',
         dueTime: '09:00',
         createdAt: iso(1600),
       }),
       makeTask({
         id: 's3',
         title: '读《设计中的设计》第 3 章',
-        dueDate: localDay(0),
+        dueDate: '2026-11-08',
         dueTime: '21:30',
         reminder: 'ontime',
         createdAt: iso(1200),
@@ -38,13 +40,13 @@ test.describe('product screenshots', () => {
       makeTask({
         id: 's4',
         title: '买牛奶和咖啡豆',
-        dueDate: localDay(0),
+        dueDate: '2026-11-08',
         createdAt: iso(600),
       }),
       makeTask({
         id: 's5',
         title: '预约下周的体检',
-        dueDate: localDay(1),
+        dueDate: '2026-11-09',
         dueTime: '10:00',
         reminder: '1d',
         createdAt: iso(3000),
@@ -53,7 +55,7 @@ test.describe('product screenshots', () => {
       makeTask({
         id: 's7',
         title: '回复产品评审的邮件',
-        dueDate: localDay(-1),
+        dueDate: '2026-11-07',
         dueTime: '15:00',
         createdAt: iso(4000),
         completedAt: iso(30),
@@ -61,7 +63,7 @@ test.describe('product screenshots', () => {
       makeTask({
         id: 's8',
         title: '把发票拍照归档',
-        dueDate: localDay(-2),
+        dueDate: '2026-11-06',
         createdAt: iso(5000),
         completedAt: iso(1500),
       }),

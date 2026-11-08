@@ -169,18 +169,20 @@ test.describe('editing', () => {
 
 test.describe('views', () => {
   test('filters and sorts 今天 / 全部 / 已完成', async ({ page }) => {
+    await page.clock.install({ time: new Date(2026, 10, 8, 14, 30, 0) });
+    await page.clock.resume();
     await openApp(page, {
       tasks: [
-        makeTask({ id: 'overdue', title: '逾期任务', dueDate: localDay(-1), dueTime: '09:00' }),
-        makeTask({ id: 'today', title: '今天傍晚', dueDate: localDay(0), dueTime: '18:00' }),
-        makeTask({ id: 'allday', title: '今天无时间', dueDate: localDay(0) }),
-        makeTask({ id: 'tomorrow', title: '明天的事', dueDate: localDay(1), dueTime: '10:00' }),
+        makeTask({ id: 'overdue', title: '逾期任务', dueDate: '2026-11-07', dueTime: '09:00' }),
+        makeTask({ id: 'today', title: '今天傍晚', dueDate: '2026-11-08', dueTime: '18:00' }),
+        makeTask({ id: 'allday', title: '今天无时间', dueDate: '2026-11-08' }),
+        makeTask({ id: 'tomorrow', title: '明天的事', dueDate: '2026-11-09', dueTime: '10:00' }),
         makeTask({ id: 'undated', title: '没有日期' }),
         makeTask({
           id: 'done',
           title: '已经完成',
-          dueDate: localDay(0),
-          completedAt: new Date().toISOString(),
+          dueDate: '2026-11-08',
+          completedAt: '2026-11-08T06:00:00.000Z',
         }),
       ],
     });
@@ -263,16 +265,54 @@ test.describe('reminders', () => {
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByLabel('标题')).toHaveValue('喝水');
   });
+
+  test('fires reminders more than a week away', async ({ page }) => {
+    await page.clock.install({ time: new Date(2026, 10, 8, 9, 0, 0) });
+    await openApp(page, {
+      tasks: [
+        makeTask({
+          id: 'far',
+          title: '续签护照',
+          dueDate: '2026-11-17',
+          dueTime: '09:00',
+          reminder: 'ontime',
+        }),
+      ],
+    });
+    await page.clock.fastForward(9 * 24 * 60 * 60 * 1000 + 60_000);
+    await expect(page.locator('.reminder-bar')).toContainText('续签护照');
+  });
+
+  test('catches up a missed reminder once after reopening', async ({ page }) => {
+    await page.clock.install({ time: new Date(2026, 10, 8, 9, 55, 0) });
+    await openApp(page, {
+      tasks: [
+        makeTask({
+          id: 'missed',
+          title: '交水电费',
+          dueDate: '2026-11-08',
+          dueTime: '10:00',
+          reminder: '10m',
+        }),
+      ],
+    });
+    await expect(page.locator('.reminder-bar')).toContainText('交水电费');
+    await page.reload();
+    await expect(page.locator('.reminder-bar')).toHaveCount(0);
+  });
 });
 
 
 test.describe('offline', () => {
-  test('remains usable after the first visit', async ({ page, context }) => {
-    await openApp(page);
-    await page.evaluate(async () => {
-      await navigator.serviceWorker.ready;
+  test('remains usable after a first visit with no second online load', async ({ page, context }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('lighttodo.onboarded.v1', '1');
+      localStorage.setItem('lighttodo.tasks.v1', '[]');
     });
-    await page.reload();
+    await page.goto('/');
+    await page.evaluate(() =>
+      navigator.serviceWorker.ready.then(() => true),
+    );
     await expect(page.getByRole('heading', { name: '今天', exact: true })).toBeVisible();
 
     await context.setOffline(true);

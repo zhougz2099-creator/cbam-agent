@@ -181,7 +181,9 @@ export function reminderLabel(option: ReminderOption): string {
 }
 
 /** When a reminder should fire, or null when the task has no reminder/time. */
-export function reminderMoment(task: Task): Date | null {
+export function reminderMoment(
+  task: Pick<Task, 'dueDate' | 'dueTime' | 'reminder'>,
+): Date | null {
   if (!task.dueDate || task.reminder === 'none') return null;
   const due = dueMoment(task);
   if (!due) return null;

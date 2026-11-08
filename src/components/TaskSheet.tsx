@@ -120,6 +120,21 @@ export function TaskSheet({ mode, task, now, onCreate, onUpdate, onDelete, onClo
     onCreate(normalizeDraft(draft));
   }
 
+  function handleDelete() {
+    if (!task) return;
+    if (validateTitle(draft.title)) {
+      onDelete(task);
+      return;
+    }
+    // Keep the latest edits in the undo snapshot even if the auto-save
+    // debounce has not fired yet.
+    onDelete({
+      ...task,
+      ...normalizeDraft(draft),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
   function setDueDate(value: string | null) {
     setDraft((current) => ({
       ...current,
@@ -308,7 +323,7 @@ export function TaskSheet({ mode, task, now, onCreate, onUpdate, onDelete, onClo
           {editing ? (
             <div className="sheet__footer">
               <p className="sheet__footnote">修改会自动保存</p>
-              <button type="button" className="delete-link" onClick={() => onDelete(task!)}>
+              <button type="button" className="delete-link" onClick={handleDelete}>
                 <TrashIcon size={16} />
                 删除任务
               </button>

@@ -5,6 +5,7 @@ export const TASKS_KEY = 'lighttodo.tasks.v1';
 export const SETTINGS_KEY = 'lighttodo.settings.v1';
 export const ONBOARDED_KEY = 'lighttodo.onboarded.v1';
 export const PERMISSION_BANNER_KEY = 'lighttodo.permissionBannerDismissed.v1';
+export const REMINDER_LOG_KEY = 'lighttodo.reminders.v1';
 
 const REMINDERS: ReminderOption[] = ['none', 'ontime', '10m', '1h', '1d'];
 
@@ -68,6 +69,28 @@ export function markOnboarded(): void {
 
 export function loadPermissionBannerDismissed(): boolean {
   return readStorage(PERMISSION_BANNER_KEY) === '1';
+}
+
+export function loadReminderLog(): Record<string, string> {
+  const raw = readStorage(REMINDER_LOG_KEY);
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+    const log: Record<string, string> = {};
+    for (const [taskId, moment] of Object.entries(parsed)) {
+      if (typeof moment === 'string') log[taskId] = moment;
+    }
+    return log;
+  } catch {
+    return {};
+  }
+}
+
+export function markReminderFired(taskId: string, moment: string): void {
+  const log = loadReminderLog();
+  log[taskId] = moment;
+  writeStorage(REMINDER_LOG_KEY, JSON.stringify(log));
 }
 
 export function savePermissionBannerDismissed(dismissed: boolean): void {
